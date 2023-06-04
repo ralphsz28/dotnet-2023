@@ -117,9 +117,16 @@ public struct PropertyEntryList
 public struct MapFeature
 {
     // https://wiki.openstreetmap.org/wiki/Key:highway
-    public static string[] HighwayTypes =
+    public enum HighwayTypes: byte
     {
-        "motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential", "road"
+        Motorway,
+        Trunk,
+        Primary,
+        Secondary,
+        Tertiary,
+        Unclassified,
+        Residential,
+        Road 
     };
 
     [FieldOffset(0)] public long Id;

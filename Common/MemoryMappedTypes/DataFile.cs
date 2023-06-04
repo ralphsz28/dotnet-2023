@@ -1,6 +1,7 @@
 using System.IO.MemoryMappedFiles;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.JavaScript;
 
 namespace Mapster.Common.MemoryMappedTypes;
 
@@ -14,6 +15,22 @@ namespace Mapster.Common.MemoryMappedTypes;
 /// <returns></returns>
 public delegate bool MapFeatureDelegate(MapFeatureData featureData);
 
+public enum ByteFeatureType : byte
+{
+    Highway,
+    Water,
+    Railway,
+    Natural,
+    Boundary,
+    Landuse,
+    Building,
+    Leisure,
+    Amenity,
+    Place,
+    AdminLevel,
+    Name,
+    OutOfScope // keys not used in this project
+}
 /// <summary>
 ///     Aggregation of all the data needed to render a map feature
 /// </summary>
@@ -24,7 +41,24 @@ public readonly ref struct MapFeatureData
     public GeometryType Type { get; init; }
     public ReadOnlySpan<char> Label { get; init; }
     public ReadOnlySpan<Coordinate> Coordinates { get; init; }
-    public Dictionary<string, string> Properties { get; init; }
+    public List<KeyValuePair<ByteFeatureType, string>> Properties { get; init; }
+    
+    public static Dictionary<string, ByteFeatureType> StringMapperType { get; } =
+        new Dictionary<string, ByteFeatureType>
+        {
+            {"highway", ByteFeatureType.Highway},
+            {"boundary", ByteFeatureType.Boundary},
+            {"landuse", ByteFeatureType.Landuse},
+            {"water", ByteFeatureType.Water},
+            {"natural", ByteFeatureType.Natural},
+            {"railway", ByteFeatureType.Railway},
+            {"building", ByteFeatureType.Building},
+            {"leisure", ByteFeatureType.Leisure},
+            {"amenity", ByteFeatureType.Amenity},
+            {"place", ByteFeatureType.Place},
+            {"admin_level", ByteFeatureType.AdminLevel},
+            {"name", ByteFeatureType.Name},
+        };
 }
 
 /// <summary>
@@ -141,6 +175,23 @@ public unsafe class DataFile : IDisposable
         GetString(stringsOffset, charsOffset, i, out key);
         GetString(stringsOffset, charsOffset, i + 1, out value);
     }
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    private static ByteFeatureType StringToType(String keyString)
+    {
+        if (keyString.StartsWith("place")) return MapFeatureData.StringMapperType["place"];
+        if (keyString == "highway") return MapFeatureData.StringMapperType["highway"];
+        if (keyString.StartsWith("water")) return MapFeatureData.StringMapperType["water"];
+        if (keyString.StartsWith("railway")) return MapFeatureData.StringMapperType["railway"];
+        if (keyString.StartsWith("natural")) return MapFeatureData.StringMapperType["natural"];
+        if (keyString.StartsWith("boundary")) return MapFeatureData.StringMapperType["boundary"];
+        if (keyString.StartsWith("landuse")) return MapFeatureData.StringMapperType["landuse"];
+        if (keyString.StartsWith("building")) return MapFeatureData.StringMapperType["building"];
+        if (keyString.StartsWith("leisure")) return MapFeatureData.StringMapperType["leisure"];
+        if (keyString.StartsWith("amenity")) return MapFeatureData.StringMapperType["amenity"];
+        if (keyString.StartsWith("admin_level")) return MapFeatureData.StringMapperType["admin_level"];
+        if (keyString == "name") return MapFeatureData.StringMapperType["name"];
+        return ByteFeatureType.OutOfScope;
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public void ForeachFeature(BoundingBox b, MapFeatureDelegate? action)
@@ -181,11 +232,15 @@ public unsafe class DataFile : IDisposable
 
                 if (isFeatureInBBox)
                 {
-                    var properties = new Dictionary<string, string>(feature->PropertyCount);
+                    var properties = new List<KeyValuePair<ByteFeatureType, String>>(feature->PropertyCount);
                     for (var p = 0; p < feature->PropertyCount; ++p)
                     {
                         GetProperty(header.Tile.Value.StringsOffsetInBytes, header.Tile.Value.CharactersOffsetInBytes, p * 2 + feature->PropertiesOffset, out var key, out var value);
-                        properties.Add(key.ToString(), value.ToString());
+                        var keyByte = StringToType(key.ToString());
+                        if(keyByte != ByteFeatureType.OutOfScope)
+                        {
+                            properties.Add(new (keyByte, value.ToString()));
+                        }
                     }
 
                     if (!action(new MapFeatureData
